@@ -167,16 +167,12 @@ These clusters can be analyzed further using the **MySQL database**, retrieving 
 ### **Setup**
 1. Clone the repository:
    ```bash
-   git clone 
+   git clone https://github.com/your-repo/gene-modularity-clustering.git
    cd gene-modularity-clustering
    ```
 2. Configure MySQL database:
    ```sql
-   CREATE DATABASE gene_cluster_db;
-   ```
-3. Run the setup script:
-   ```bash
-   python setup.py
+   mysql -u root -p > setup.sql
    ```
 
 ---
@@ -193,7 +189,7 @@ Results are stored in the **MySQL database** and can be exported for further ana
 ---
 
 ## Author
-- **Hayden Noh**
+**Hayden Noh**
 
 ---
 
