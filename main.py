@@ -1,13 +1,9 @@
-#import sqlite3
 import mysql.connector
 import networkx
 import community
 import numpy
 from sklearn.cluster import KMeans
 import matplotlib.pyplot
-
-# conn = sqlite3.connect("database.db")
-# cursor = conn.cursor()
 
 conn = mysql.connector.connect(
     host="localhost",  # Usually "localhost" if running locally
@@ -83,8 +79,8 @@ for thisfile in file_list:
           ''',
           (thisfile, pathway)
         )
-        
         exists = cursor.fetchone()[0]
+
         if not exists:
           # The pathway in this file does not exist
           # Populate Pathways Table (gid, pid, size)
@@ -118,58 +114,74 @@ for thisfile in file_list:
                 "WHERE P.pname = %s AND FP.fname = %s",
                 (gene, pathway, thisfile)
             )
-
             conn.commit()
 
-# Normalize the Pathways table weight based on max size
-# If MAX(size) = 0, then keep the size (all pathway sizes stay 0)
+# It is possible to have genes that occur a very low number of times, which will skew the entire dataset. Filter out such genes:
+# one CONCERN: what if a pathway had a gene removed? then we would want to reduce the total size of the pathway, wouldn't we?
+# another CONCERN: what if a pathway had all of its genes removed? we would want to remove that from the Pathways table as well, or would it be fine because no gene references it?
+# Below implementation: for now, we only remove from Gene_Pathway because that's what is referenced for the correlation table anyway
+# Create temporary table for genes to delete
 cursor.execute(
-    "SELECT MAX(size) FROM Pathways"
+    '''
+    DROP TABLE IF EXISTS Gene_Filter
+    '''
 )
-path_max_size = cursor.fetchone()[0] or 0
-
-if path_max_size > 0:
-    cursor.execute(
-        '''
-        UPDATE Pathways SET weight = size * 1.0 / %s
-        '''
-        ,(path_max_size,)
+threshold = 20
+cursor.execute(
+    '''
+    CREATE TABLE Genes_Filter AS
+        SELECT gid
+        FROM Gene_Pathway GP
+        GROUP BY gid
+        HAVING COUNT(*) <= %s   
+    ''',
+    (threshold,)
+)
+cursor.execute(
+    '''
+    DELETE FROM Gene_Pathway
+    WHERE gid IN (
+        SELECT gid
+        FROM Genes_Filter
     )
-else:
-    cursor.execute(
-        '''
-        UPDATE Pathways SET weight = size
-        '''
-    )
+    '''
+)
+cursor.execute(
+    '''
+    DROP TABLE Genes_Filter
+    '''
+)
 
-# Normalize the Files table scale based on max scale
-# scale is defaulted to 1 --> weights of adequate range are ideal
-# Does not address files that have a custom scale of 0
+# Get the max Files scale to be used in normalization
+# If file_max_scale is 1.0, it means all scales are equal to 1.0
 cursor.execute(
     '''
     SELECT MAX(scale) FROM Files
     '''
 )
 file_max_scale = cursor.fetchone()[0]
-if file_max_scale > 1.0:
-    # There is at least one custom scale entry
-    cursor.execute(
-    '''
-        UPDATE Files 
-        SET scale = scale / %s
-    '''
-    ,(file_max_scale,)
-    )
-
-# Multiply the weighted file scale on pathway weights to combine total weight
+# Get the max pathway size to be used in normalization
 cursor.execute(
     '''
-    UPDATE Pathways P
-    JOIN File_Pathway FP ON P.pid = FP.pid
-    JOIN Files F ON FP.fname = F.fname
-    SET P.weight = weight * F.scale
+    SELECT MAX(size) FROM Pathways
     '''
 )
+max_size = cursor.fetchone()[0] or 0
+
+# Compute normalized Pathway weights
+if max_size > 0:
+    cursor.execute(
+        '''
+        UPDATE Pathways P
+        JOIN File_Pathway FP ON P.pid = FP.pid
+        JOIN Files F ON FP.fname = F.fname
+        SET P.weight = (LOG10(%s + 1) - LOG10(P.size + 1)) * F.scale / %s
+        ''',
+        (max_size, file_max_scale)
+    )
+else:
+    print("All pathways are empty.\n")
+    exit(1)
 
 # Error check that a Pathways entry's weight has been NULLified
 cursor.execute(
@@ -182,7 +194,6 @@ nullcatch = cursor.fetchall()
 # exit(1)
 if nullcatch:
     print("WARNING! Some pathways have NULL weights\n")
-
 
 # Create temporary table for calculating total occurrence weights for efficiency
 cursor.execute(
@@ -200,22 +211,6 @@ cursor.execute(
     )
     '''
 )
-# Normalize the Gene_Total_Weight based on max total weight
-cursor.execute(
-    '''
-    SELECT MAX(total_weight) FROM Gene_Total_Weight
-    '''
-)
-max_weight = cursor.fetchone()[0] or 0
-if max_weight == 0:
-    print("There is no correlation between all genes")
-    exit(1)
-cursor.execute(
-    '''
-    UPDATE Gene_Total_Weight SET total_weight = total_weight / %s
-    ''',
-    (max_weight,)
-)
 # Create correlation matrix
 # Filters correlation matrix: no entries with jaccard similarity below 0.3
 cursor.execute(
@@ -227,13 +222,13 @@ cursor.execute(
     '''
     CREATE VIEW Correlation_Table AS
     SELECT gp1.gid AS gene1, gp2.gid AS gene2,
-    SUM(P.weight) * 1.0 / (GW1.total_weight + GW2.total_weight - SUM(P.weight)) AS jaccard_similarity
+    SUM(P.weight) / (GW1.total_weight + GW2.total_weight - SUM(P.weight)) AS jaccard_similarity
     FROM Gene_Pathway gp1
     JOIN Gene_Pathway gp2 ON gp1.pid = gp2.pid
     JOIN Pathways P ON P.pid = gp1.pid
     JOIN Gene_Total_Weight GW1 ON gp1.gid = GW1.gid
     JOIN Gene_Total_Weight GW2 ON gp2.gid = GW2.gid
-    WHERE gp1.pid < gp2.pid
+    WHERE gp1.gid < gp2.gid
     GROUP BY gp1.gid, gp2.gid, GW1.total_weight, GW2.total_weight
     HAVING jaccard_similarity > 0.0
     '''
