@@ -1,0 +1,6 @@
+mysql-connector-python
+networkx
+python-louvain
+numpy
+scikit-learn
+matplotlib
