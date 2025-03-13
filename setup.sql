@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS Genes(
 CREATE TABLE IF NOT EXISTS Pathways(
     pid INT AUTO_INCREMENT PRIMARY KEY,
     pname VARCHAR(255) NOT NULL,
-    size INT NOT NULL,
+    size INT,
     weight DOUBLE
 );
 

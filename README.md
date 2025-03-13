@@ -17,7 +17,7 @@ The MySQL database schema consists of the following tables:
 |---------|------|-------------|
 | `pid`  | INT | PRIMARY KEY |
 | `pname` | VARCHAR(255) | NOT NULL |
-| `size` | INT | NOT NULL |
+| `size` | INT | |
 | `weight` | DOUBLE | |
 
 ### `Gene_Pathway`
@@ -62,12 +62,23 @@ Datafile4.txt
 - `Datafile3.txt` (scale: 4)
 - `Datafile4.txt` (scale: default 1)
 
+#### Datafile1.txt
+```
+Pathway1    Gene1 Gene2 Gene3 Gene4 Gene5 Gene6
+Pathway2    Gene4 Gene6 Gene9 Gene10 Gene11 Gene12 Gene13
+Pathway3    Gene3 Gene7 Gene10 Gene13
+...
+```
+- Pathway1 size: 6
+- Pathway2 size: 7
+- Pathway3 size: 4
 ---
 
 ## Database Population & Normalization
 
 ### File Scale Normalization
-The `Files` table is normalized based on the maximum scale in the dataset. Given the example where the **max scale** is **4**:
+The `Files` table is normalized based on the maximum scale in the dataset. This normalization is linear because the user should have direct control over scale. Note that using scale values [1,10] is ideal. Large disparity in values can skew the dataset.
+Given the example where the **max scale** is **4**:
 ```
 Datafile1.txt → scale = 1/4
 Datafile2.txt → scale = 3/4
@@ -75,19 +86,22 @@ Datafile3.txt → scale = 1
 Datafile4.txt → scale = 1/4
 ```
 
-### Pathway Weight Normalization
-The `Pathways` table weights are normalized based on the maximum pathway size. Given the maximum size is **9**:
+### Pathway Size Normalization
+The `Pathways` table sizes are log-normalized based on the maximum pathway size. Log10 is used as there can be huge differences in pathway sizes, such as a min of 1 and a max of 3000 genes. This make linear normalization not ideal. Given the maximum size is **7**:
 ```
-Pathway1 → weight = 9/9 = 1
-Pathway2 → weight = 8/9
-Pathway3 → weight = 6/9
+Pathway1 → size = log(7+1)/log(6+1) = 1.07
+Pathway2 → size = log(7+1)/log(7+1) = 1
+Pathway3 → size = log(7+1)/log(4+1) = 1.29
 ```
-Each pathway’s weight is **multiplied by the file scale**:
+Pathways with smaller sizes should have a higher normalized value, as smaller pathways carry more precise information.
+Each pathway’s weight is computed as **pathway size multiplied by the file scale**:
 ```
-Pathway1 (in Datafile1) → 1 * (1/4) = 1/4
-Pathway2 (in Datafile1) → (8/9) * (1/4) = 2/9
-Pathway3 (in Datafile1) → (6/9) * (1/4) = 3/18
+Pathway1 (in Datafile1) → 1.07 * (1/4) = 0.2675
+Pathway2 (in Datafile1) → 1 * (1/4) = 0.25
+Pathway3 (in Datafile1) → (1.29) * (1/4) = 0.3225
 ```
+### Gene Filtering Threshold
+The 'Gene_Pathway' table is filtered on a user-selected threshold: genes that have low occurrence below that threshold are removed, as they do not offer statistical significance and instead skew the dataset.
 
 ---
 

@@ -85,9 +85,9 @@ for thisfile in file_list:
           # The pathway in this file does not exist
           # Populate Pathways Table (gid, pid, size)
           cursor.execute(
-              "INSERT INTO Pathways (pname, size) "
-              "VALUES (%s, %s)",
-              (pathway, len(gene_list.split()))
+              "INSERT INTO Pathways (pname) "
+              "VALUES (%s)",
+              (pathway,)
           )
           pid = cursor.lastrowid
           # Populate File_Pathway Table (fname, pid)
@@ -116,10 +116,8 @@ for thisfile in file_list:
             )
             conn.commit()
 
-# It is possible to have genes that occur a very low number of times, which will skew the entire dataset. Filter out such genes:
-# one CONCERN: what if a pathway had a gene removed? then we would want to reduce the total size of the pathway, wouldn't we?
-# another CONCERN: what if a pathway had all of its genes removed? we would want to remove that from the Pathways table as well, or would it be fine because no gene references it?
-# Below implementation: for now, we only remove from Gene_Pathway because that's what is referenced for the correlation table anyway
+# It is possible to have genes that occur a very low number of times, which will skew the entire dataset. Filter out from Gene_Pathway, which is used to create the correlation table
+
 # Create temporary table for genes to delete
 cursor.execute(
     '''
@@ -149,6 +147,25 @@ cursor.execute(
 cursor.execute(
     '''
     DROP TABLE Genes_Filter
+    '''
+)
+# Assign pathway sizes based on the filtered Gene_Pathway Table
+cursor.execute(
+    '''
+    UPDATE Pathways P 
+    LEFT JOIN (
+        SELECT pid, COUNT(*) AS psize
+        FROM Gene_Pathway
+        GROUP BY pid
+    ) PS ON P.pid = PS.pid
+    SET P.size = PS.psize
+    '''
+)
+# Delete empty pathways that have been completely filtered out
+cursor.execute(
+    '''
+    DELETE FROM Pathways
+    WHERE size = 0 OR size IS NULL
     '''
 )
 
@@ -182,18 +199,6 @@ if max_size > 0:
 else:
     print("All pathways are empty.\n")
     exit(1)
-
-# Error check that a Pathways entry's weight has been NULLified
-cursor.execute(
-    "SELECT * "
-    "FROM Pathways "
-    "WHERE weight IS NULL"
-)
-nullcatch = cursor.fetchall()
-
-# exit(1)
-if nullcatch:
-    print("WARNING! Some pathways have NULL weights\n")
 
 # Create temporary table for calculating total occurrence weights for efficiency
 cursor.execute(
