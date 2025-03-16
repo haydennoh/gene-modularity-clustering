@@ -174,9 +174,6 @@ These clusters can be analyzed further using the **MySQL database**, retrieving 
 - Python3
 - MySQL
 - Required Python libraries:
-  ```bash
-  pip install -r requirements.txt
-  ```
   
 ### **Setup**
 1. Clone the repository:
@@ -184,7 +181,11 @@ These clusters can be analyzed further using the **MySQL database**, retrieving 
    git clone https://github.com/your-repo/gene-modularity-clustering.git
    cd gene-modularity-clustering
    ```
-2. Configure MySQL database:
+2. Installing library dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Configure MySQL database:
    ```sql
    mysql -u root -p > setup.sql
    ```
